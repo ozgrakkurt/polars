@@ -4105,6 +4105,10 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
             msg = "must specify `on` OR `left_on` and `right_on`"
             raise ValueError(msg)
 
+        coalesce = None
+        if how == "outer_coalesce":
+            coalesce = True
+
         return self._from_pyldf(
             self._ldf.join(
                 other._ldf,
@@ -4116,6 +4120,7 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
                 how,
                 suffix,
                 validate,
+                coalesce,
             )
         )
 

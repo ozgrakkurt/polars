@@ -290,9 +290,13 @@ pub trait DataFrameJoinOps: IntoDf {
                     // SAFETY: join indices are known to be in bounds
                     || unsafe { left_df._create_left_df_from_slice(join_idx_left, false, !swap) },
                     || unsafe {
-                        // remove join columns
-                        remove_selected(other, &selected_right)
-                            ._take_unchecked_slice(join_idx_right, true)
+                        if args.coalesce.coalesce(&args.how) {
+                            // remove join columns
+                            Cow::Owned(remove_selected(other, &selected_right))
+                        } else {
+                            Cow::Borrowed(other)
+                        }
+                        ._take_unchecked_slice(join_idx_right, true)
                     },
                 );
                 _finish_join(df_left, df_right, args.suffix.as_deref())
@@ -306,7 +310,14 @@ pub trait DataFrameJoinOps: IntoDf {
                 }
                 let ids =
                     _left_join_multiple_keys(&mut left, &mut right, None, None, args.join_nulls);
-                left_df._finish_left_join(ids, &remove_selected(other, &selected_right), args)
+                let other = if args.coalesce.coalesce(&args.how) {
+                    // remove join columns
+                    Cow::Owned(remove_selected(other, &selected_right))
+                } else {
+                    Cow::Borrowed(other)
+                };
+
+                left_df._finish_left_join(ids, &other, args)
             },
             JoinType::Outer { .. } => {
                 let df_left = unsafe { DataFrame::new_no_checks(selected_left_physical) };
@@ -330,9 +341,7 @@ pub trait DataFrameJoinOps: IntoDf {
                     || unsafe { other.take_unchecked(&idx_ca_r) },
                 );
 
-                let JoinType::Outer { coalesce } = args.how else {
-                    unreachable!()
-                };
+                let coalesce = args.coalesce.coalesce(&JoinType::Outer);
                 let names_left = selected_left.iter().map(|s| s.name()).collect::<Vec<_>>();
                 let names_right = selected_right.iter().map(|s| s.name()).collect::<Vec<_>>();
                 let out = _finish_join(df_left, df_right, args.suffix.as_deref());
@@ -459,12 +468,7 @@ pub trait DataFrameJoinOps: IntoDf {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        self.join(
-            other,
-            left_on,
-            right_on,
-            JoinArgs::new(JoinType::Outer { coalesce: false }),
-        )
+        self.join(other, left_on, right_on, JoinArgs::new(JoinType::Outer))
     }
 }
 
